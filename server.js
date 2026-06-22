@@ -9,6 +9,8 @@ import { extractResumeText } from "./backend/resume-analyzer/parser.js";
 import { calculateATS } from "./backend/resume-analyzer/atsScore.js";
 import { findMissingSkills } from "./backend/resume-analyzer/skills.js";
 import { getSuggestions } from "./backend/resume-analyzer/suggestions.js";
+import { handleReportRequest } from "./backend/reports/reportGenerator.js";
+import { getUserBenchmark } from "./backend/benchmarking/percentileService.js";
 import { fetchWorkflows, analyzeWorkflow } from "./backend/repository-analyzer/cicdValidator.js";
 import { handleReportRequest } from "./backend/reports/reportGenerator.js";
 import { Server as SocketIOServer } from "socket.io";
@@ -1384,6 +1386,19 @@ if (
     const session = getSession(req);
     if (!session) return sendJson(res, 401, { error: "Authentication required." });
     return await handleReportRequest(req, res, pathname, session);
+  }
+
+  if (pathname === "/api/user/benchmark" && req.method === "GET") {
+    const session = getSession(req);
+    if (!session) return sendJson(res, 401, { error: "Authentication required." });
+    
+    try {
+        const benchmark = await getUserBenchmark(session.sub);
+        return sendJson(res, 200, { success: true, benchmark });
+    } catch (err) {
+        console.error("Benchmark error:", err);
+        return sendJson(res, 500, { error: "Failed to generate benchmark." });
+    }
   }
 
   return sendJson(res, 404, { error: "Not found." });
