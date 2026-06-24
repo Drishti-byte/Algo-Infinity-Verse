@@ -24,6 +24,13 @@ import {
   verifySessionToken, hashPassword, passwordMatches, validateSignup 
 } from "./backend/services/auth.service.js";
 import { applySM2 } from "./backend/services/memory.service.js";
+import {
+  createBattle,
+  joinBattle,
+  submitSolution,
+  getBattle,
+  getHistory,
+} from "./pages/Dsa-Battle/Battleservice.js";
 
 const upload = multer({ storage: multer.memoryStorage() }).single("resume");
 const uploadCsv = multer({ storage: multer.memoryStorage() }).single("csv");
@@ -1361,6 +1368,117 @@ if (
         return sendJson(res, 500, { error: "Failed to generate benchmark." });
     }
   }
+
+  // ── Battle routes ──────────────────────────────────────────────────────────
+  // All battle routes require Firestore. If useFirestore is false (local dev
+  // with no Firebase env vars), we return 503 rather than crashing.
+  // All routes require an active session — unauthenticated requests get 401.
+ 
+  if (pathname === "/api/battles" && req.method === "POST") {
+    const session = getSession(req);
+    if (!session) return sendJson(res, 401, { error: "Login required." });
+    if (!useFirestore) return sendJson(res, 503, { error: "Battle mode requires Firestore." });
+ 
+    try {
+      const { opponentEmail, difficulty } = await readJsonBody(req);
+      if (!opponentEmail?.trim()) {
+        return sendJson(res, 400, { error: "opponentEmail is required." });
+      }
+      if (!["Easy", "Medium", "Hard"].includes(difficulty)) {
+        return sendJson(res, 400, { error: "difficulty must be Easy, Medium, or Hard." });
+      }
+      const battleId = await createBattle(session.sub, opponentEmail.trim(), difficulty);
+      return sendJson(res, 201, { battleId });
+    } catch (err) {
+      return sendJson(res, 400, { error: err.message });
+    }
+  }
+ 
+  // GET /api/battles/history  — must be declared BEFORE the :id pattern below
+  // or "history" gets captured as a battle ID.
+  if (pathname === "/api/battles/history" && req.method === "GET") {
+    const session = getSession(req);
+    if (!session) return sendJson(res, 401, { error: "Login required." });
+    if (!useFirestore) return sendJson(res, 503, { error: "Battle mode requires Firestore." });
+ 
+    try {
+      const params = new URL(req.url, `http://${req.headers.host}`).searchParams;
+      const limit      = Math.min(parseInt(params.get("limit") || "20", 10), 50);
+      const startAfter = params.get("cursor") || null;
+      const history = await getHistory(session.sub, limit, startAfter);
+      return sendJson(res, 200, {
+        history,
+        nextCursor: history.length === limit ? history[history.length - 1].id : null,
+      });
+    } catch (err) {
+      return sendJson(res, 400, { error: err.message });
+    }
+  }
+ 
+  // Dynamic battle routes: /api/battles/:id and /api/battles/:id/(join|submit|result)
+  const battleMatch = pathname.match(
+    /^\/api\/battles\/([^/]+?)(?:\/(join|submit|result))?$/
+  );
+ 
+  if (battleMatch) {
+    const session = getSession(req);
+    if (!session) return sendJson(res, 401, { error: "Login required." });
+    if (!useFirestore) return sendJson(res, 503, { error: "Battle mode requires Firestore." });
+ 
+    const [, battleId, action] = battleMatch;
+ 
+    // GET /api/battles/:id — poll endpoint, returns state + timeRemainingMs
+    if (!action && req.method === "GET") {
+      try {
+        const battle = await getBattle(battleId);
+        return sendJson(res, 200, battle);
+      } catch (err) {
+        return sendJson(res, 404, { error: err.message });
+      }
+    }
+ 
+    // POST /api/battles/:id/join
+    if (action === "join" && req.method === "POST") {
+      try {
+        const result = await joinBattle(battleId, session.sub);
+        return sendJson(res, 200, result);
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message });
+      }
+    }
+ 
+    // POST /api/battles/:id/submit
+    if (action === "submit" && req.method === "POST") {
+      try {
+        const { code } = await readJsonBody(req);
+        if (!code?.trim()) {
+          return sendJson(res, 400, { error: "code is required." });
+        }
+        const result = await submitSolution(battleId, session.sub, code);
+        return sendJson(res, 200, result);
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message });
+      }
+    }
+ 
+    // GET /api/battles/:id/result
+    if (action === "result" && req.method === "GET") {
+      try {
+        const battle = await getBattle(battleId);
+        if (!["completed", "expired"].includes(battle.status)) {
+          return sendJson(res, 409, { error: "Battle is not finished yet." });
+        }
+        return sendJson(res, 200, {
+          winner:     battle.winner,
+          xpAwarded:  battle.xpAwarded,
+          status:     battle.status,
+        });
+      } catch (err) {
+        return sendJson(res, 404, { error: err.message });
+      }
+    }
+  }
+  // ── End battle routes ─────
 
   return sendJson(res, 404, { error: "Not found." });
 }

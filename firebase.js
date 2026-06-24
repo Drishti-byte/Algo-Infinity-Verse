@@ -82,4 +82,6 @@ export const COLLECTIONS = {
   SESSIONS: "sessions",
   QUIZ_RESULTS: "quizResults",
   AUDITS_HISTORY: "audits_history",
+  BATTLES:  "battles",
+  PROBLEMS: "problems",
 };

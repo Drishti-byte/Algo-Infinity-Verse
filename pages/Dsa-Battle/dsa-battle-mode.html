@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Dsa Battle Mode | Algo Infinity Verse</title>
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="../../styles.css" />
     <link rel="stylesheet" href="dsa-battle-mode.css" />
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Poppins:wght@300;400;500;600;700&family=Fira+Code:wght@400;500;600&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
@@ -173,6 +173,13 @@ Match History
 <section id="battle-lobby" class="battle-lobby">
     <h2 class="section-title">Battle Lobby</h2>
 
+    <div class="input-group" style="margin-top:2rem">
+      <label for="joinBattleId">Got a Battle ID? Join here</label>
+      <input type="text" id="joinBattleId" class="search-bar" placeholder="Paste Battle ID">
+    </div>
+    <button id="joinBattleBtn" class="btn btn-secondary" style="margin:auto; min-width:250px;">
+      Join Battle
+    </button>
     <div class="battle-card">
 
         <!-- Lobby Header -->
@@ -187,15 +194,13 @@ Match History
 
         <!-- Opponent Input -->
         <div class="input-group">
-            <label for="opponentName">
-                Opponent Username
-            </label>
-            <input
-                type="text"
-                id="opponentName"
-                class="search-bar"
-                placeholder="Enter Opponent Username"
-            >
+            <label for="opponentEmail">Opponent Email</label>
+              <input
+                  type="email"
+                  id="opponentEmail"
+                  class="search-bar"
+                  placeholder="Enter opponent's registered email"
+              >
         </div>
 
         <!-- Difficulty Selection -->
@@ -251,6 +256,18 @@ Match History
             class="btn btn-primary"
         >
             ⚔️ Start Challenge
+        </button>
+
+        <!-- Status + Join (added for backend integration) -->
+        <p id="battleStatusMsg" style="color:#06b6d4;text-align:center;margin-top:1rem;"></p>
+
+        <div class="input-group" style="margin-top:2rem">
+            <label for="joinBattleId">Got a Battle ID? Join here</label>
+            <input type="text" id="joinBattleId" class="search-bar" placeholder="Paste Battle ID">
+        </div>
+        <button id="joinBattleBtn" class="btn btn-secondary"
+                style="margin:auto;min-width:250px;">
+            Join Battle
         </button>
 
     </div>
