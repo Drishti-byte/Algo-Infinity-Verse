@@ -980,7 +980,7 @@ function renderQuizQuestion() {
 }
 
 function selectQuizAnswer(selectedIndex) {
-  clearTimeout(quizTimerInterval);
+  clearInterval(quizTimerInterval);
   const question = currentQuiz.questions[currentQuiz.currentQuestionIndex];
   const isCorrect = selectedIndex === question.correct;
   currentQuiz.answers.push({ questionId: question.id, selected: selectedIndex, correct: question.correct, isCorrect: isCorrect });
