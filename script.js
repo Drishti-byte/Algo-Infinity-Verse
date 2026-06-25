@@ -1,15 +1,4 @@
 // ============================================
-// UTILITY FUNCTIONS (Memoization & Debounce)
-// ============================================
-function debounce(func, wait) {
-  let timeout;
-  return function(...args) {
-    clearTimeout(timeout);
-    timeout = setTimeout(() => func.apply(this, args), wait);
-  };
-}
-
-// ============================================
 // PARTIAL LOADER
 // ============================================
 function getPartialsBase() {
@@ -962,13 +951,13 @@ function initPracticeSection() {
   const searchInput = document.getElementById("searchInput");
   const clearBtn = document.getElementById("clearSearchBtn");
   if (searchInput) {
-    searchInput.addEventListener("input", debounce((e) => {
+    searchInput.addEventListener("input", (e) => {
       currentSearch = e.target.value.toLowerCase();
       currentPage = 1;
       renderProblems();
       if (currentSearch.length > 0) clearBtn.classList.add("visible");
       else clearBtn.classList.remove("visible");
-    }, 300));
+    });
   }
   if (clearBtn) {
     clearBtn.addEventListener("click", () => {
@@ -997,16 +986,8 @@ let currentFilter = 'all';
 let currentSearch = '';
 let paginationInitialized = false;
 
-let lastFilteredCacheKey = "";
-let lastFilteredProblems = [];
-
 // Get filtered problems
 function getFilteredProblems() {
-  const cacheKey = `${currentSearch}|${currentFilter}|${userProgress?.favoriteProblems?.join(",")}`;
-  if (cacheKey === lastFilteredCacheKey) {
-    return lastFilteredProblems;
-  }
-
   let filtered = practiceProblems;
   if (currentSearch) {
     const searchLower = currentSearch.toLowerCase();
@@ -1016,65 +997,59 @@ function getFilteredProblems() {
     if (currentFilter === 'favorites') filtered = filtered.filter(p => userProgress.favoriteProblems.includes(p.id));
     else filtered = filtered.filter(p => p.difficulty === currentFilter);
   }
-  
-  lastFilteredCacheKey = cacheKey;
-  lastFilteredProblems = filtered;
-  
   return filtered;
 }
 
-let problemsVirtualList = null;
-
-// Render problems using VirtualList
+// Render problems with pagination
 function renderProblems() {
   const filtered = getFilteredProblems();
   const totalProblems = filtered.length;
+  const totalPages = Math.max(1, Math.ceil(totalProblems / PROBLEMS_PER_PAGE));
+  if (currentPage > totalPages) currentPage = totalPages;
+  if (currentPage < 1) currentPage = 1;
+  const start = (currentPage - 1) * PROBLEMS_PER_PAGE;
+  const end = Math.min(start + PROBLEMS_PER_PAGE, totalProblems);
+  const paginatedProblems = filtered.slice(start, end);
   
   const visibleCountEl = document.getElementById('visible-count');
   const totalCountEl = document.getElementById('total-count');
-  if (visibleCountEl) visibleCountEl.textContent = totalProblems;
+  if (visibleCountEl) visibleCountEl.textContent = paginatedProblems.length;
   if (totalCountEl) totalCountEl.textContent = totalProblems;
   
-  renderProblemCards(filtered);
+  renderProblemCards(paginatedProblems);
+  updatePaginationControls(currentPage, totalPages);
 }
 
-// Render problem cards via VirtualList
+// Render problem cards
 function renderProblemCards(problems) {
   const problemsGrid = document.querySelector(".problems-grid");
   if (!problemsGrid) return;
   
+  if (!problems || problems.length === 0) {
+    problemsGrid.innerHTML = `<div class="empty-state" style="text-align:center; padding:3rem; color:var(--text-secondary);"><p>No problems found matching your criteria.</p></div>`;
+    return;
+  }
+  
   const cpType = userProgress.codingPersonality ? userProgress.codingPersonality.type : "brute-force first";
   
-  if (!problemsVirtualList) {
-    problemsVirtualList = new VirtualList({
-      container: problemsGrid,
-      items: problems,
-      isGrid: true,
-      itemHeight: 180, // Estimated problem card height
-      gap: 24,         // Grid gap
-      overscan: 4,
-      renderItem: (problem) => {
-        let isRec = false, recLabel = "";
-        if (cpType === "brute-force first") {
-          if (problem.difficulty === "easy" || problem.tags.includes("Arrays")) { isRec = true; recLabel = "Plan First!"; }
-        } else if (cpType === "over-optimizer") {
-          if (problem.difficulty === "hard" || problem.tags.includes("Dynamic Programming") || problem.tags.includes("Hash Table")) { isRec = true; recLabel = "Optimize Metrics"; }
-        } else if (cpType === "slow but accurate") {
-          if (problem.difficulty === "medium") { isRec = true; recLabel = "Speed Practice"; }
-        } else if (cpType === "greedy thinker") {
-          if (problem.tags.includes("Greedy") || problem.tags.includes("Divide and Conquer") || problem.tags.includes("Recursion")) { isRec = true; recLabel = "Heuristic Check"; }
-        }
-        const recBadge = isRec ? `<span class="rec-personality-badge"><i class="fas fa-brain"></i> ${recLabel}</span>` : "";
-        const isCompleted = userProgress.completedProblems.includes(problem.id);
-        const isFavorite = userProgress.favoriteProblems.includes(problem.id);
-        const hasNotes = userProgress.problemNotes && userProgress.problemNotes[problem.id];
-        
-        return `<div class="problem-card animate-in" data-id="${problem.id}"><div class="problem-header"><h3 class="problem-title">${recBadge}${problem.title}</h3><div class="problem-actions"><button class="favorite-btn ${isFavorite ? 'active' : ''}" data-id="${problem.id}" aria-label="Favorite problem"><i class="fas fa-heart"></i></button><button class="notes-btn ${hasNotes ? 'has-notes' : ''}" data-id="${problem.id}" aria-label="Problem notes"><i class="fas fa-sticky-note"></i></button><span class="difficulty-badge ${problem.difficulty}">${problem.difficulty}</span></div></div><div class="problem-tags">${problem.tags.map(tag => `<span class="tag">${tag}</span>`).join("")}</div><div class="problem-meta"><span class="acceptance-rate"><i class="fas fa-users"></i> ${problem.acceptance} acceptance</span>${isCompleted ? '<span class="completed-badge"><i class="fas fa-check"></i> Completed</span>' : ''}</div></div>`;
-      }
-    });
-  } else {
-    problemsVirtualList.updateItems(problems);
-  }
+  problemsGrid.innerHTML = problems.map((problem) => {
+    let isRec = false, recLabel = "";
+    if (cpType === "brute-force first") {
+      if (problem.difficulty === "easy" || problem.tags.includes("Arrays")) { isRec = true; recLabel = "Plan First!"; }
+    } else if (cpType === "over-optimizer") {
+      if (problem.difficulty === "hard" || problem.tags.includes("Dynamic Programming") || problem.tags.includes("Hash Table")) { isRec = true; recLabel = "Optimize Metrics"; }
+    } else if (cpType === "slow but accurate") {
+      if (problem.difficulty === "medium") { isRec = true; recLabel = "Speed Practice"; }
+    } else if (cpType === "greedy thinker") {
+      if (problem.tags.includes("Greedy") || problem.tags.includes("Divide and Conquer") || problem.tags.includes("Recursion")) { isRec = true; recLabel = "Heuristic Check"; }
+    }
+    const recBadge = isRec ? `<span class="rec-personality-badge"><i class="fas fa-brain"></i> ${recLabel}</span>` : "";
+    const isCompleted = userProgress.completedProblems.includes(problem.id);
+    const isFavorite = userProgress.favoriteProblems.includes(problem.id);
+    const hasNotes = userProgress.problemNotes && userProgress.problemNotes[problem.id];
+    
+    return `<div class="problem-card animate-in" data-id="${problem.id}"><div class="problem-header"><h3 class="problem-title">${recBadge}${problem.title}</h3><div class="problem-actions"><button class="favorite-btn ${isFavorite ? 'active' : ''}" data-id="${problem.id}" aria-label="Favorite problem"><i class="fas fa-heart"></i></button><button class="notes-btn ${hasNotes ? 'has-notes' : ''}" data-id="${problem.id}" aria-label="Problem notes"><i class="fas fa-sticky-note"></i></button><span class="difficulty-badge ${problem.difficulty}">${problem.difficulty}</span></div></div><div class="problem-tags">${problem.tags.map(tag => `<span class="tag">${tag}</span>`).join("")}</div><div class="problem-meta"><span class="acceptance-rate"><i class="fas fa-users"></i> ${problem.acceptance} acceptance</span>${isCompleted ? '<span class="completed-badge"><i class="fas fa-check"></i> Completed</span>' : ''}</div></div>`;
+  }).join("");
   
   // Use event delegation for problem cards (listeners are attached once).
   if (!problemsGrid.dataset.listenersAttached) {
@@ -1094,16 +1069,7 @@ function attachProblemGridEventDelegation(grid) {
       e.preventDefault();
       const problemId = parseInt(favoriteBtn.dataset.id);
       toggleFavorite(problemId);
-      
-      if (currentFilter === 'favorites') {
-        renderProblems(); // Re-render to remove from list
-      } else {
-        // Optimize re-render: just update the local DOM button state
-        const isActive = favoriteBtn.classList.toggle('active');
-        favoriteBtn.setAttribute('aria-pressed', String(isActive));
-        // Clear filter cache to ensure it's re-computed next time if needed
-        lastFilteredCacheKey = "";
-      }
+      renderProblems();
       return;
     }
 
@@ -1363,8 +1329,6 @@ function isRoadmapStepCompleted(step) {
   return step.problems.some(pid => userProgress.completedProblems.includes(pid));
 }
 
-let basicRoadmapVirtualList = null;
-
 function renderBasicRoadmap() {
   const timeline = document.getElementById("basicRoadmapTimeline");
   if (!timeline) return;
@@ -1376,36 +1340,29 @@ function renderBasicRoadmap() {
            step.theory.toLowerCase().includes(searchLower);
   });
 
-  if (!basicRoadmapVirtualList) {
-    basicRoadmapVirtualList = new VirtualList({
-      container: timeline,
-      items: filteredSteps,
-      isGrid: false,
-      itemHeight: 200, // Estimated timeline item height
-      gap: 32,
-      overscan: 4,
-      renderItem: (step) => {
-        const index = roadmapSteps.indexOf(step);
-        const isCompleted = isRoadmapStepCompleted(step);
-        let isUnlocked = index === 0 || isRoadmapStepCompleted(roadmapSteps[index - 1]);
-        let statusClass = "locked", statusText = "Locked", statusTagClass = "locked-tag";
-        if (isCompleted) { statusClass = "completed"; statusText = "Completed"; statusTagClass = "completed-tag"; }
-        else if (isUnlocked) { statusClass = "active"; statusText = "Active"; statusTagClass = "active-tag"; }
-        let progressPercent = 0, progressText = "";
-        if (step.type === "quiz") { progressPercent = isCompleted ? 100 : 0; progressText = isCompleted ? "Passed" : "Not Started"; }
-        else { const solved = step.problems.filter(pid => userProgress.completedProblems.includes(pid)).length; progressPercent = Math.round((solved / step.problems.length) * 100); progressText = `${solved}/${step.problems.length} Solved`; }
-        let stepIcon = `<i class="fa-solid ${step.icon}"></i>`;
-        if (isCompleted) stepIcon = `<i class="fa-solid fa-check"></i>`;
-        else if (statusClass === "locked") stepIcon = `<i class="fa-solid fa-lock"></i>`;
-        return `<div class="roadmap-step ${statusClass}" data-step="${step.id}"><div class="step-marker-dot">${stepIcon}</div><div class="roadmap-step-card"><div class="step-card-header"><span class="step-number">Step ${step.id}</span><span class="step-status-tag ${statusTagClass}">${statusText}</span></div><h3 class="step-title">${step.title}</h3><p class="step-desc">${step.desc}</p><div class="step-card-footer"><div class="step-progress"><div class="step-progress-label">Progress: ${progressText} (${progressPercent}%)</div><div class="step-progress-bar-container"><div class="step-progress-bar-fill" style="width: ${progressPercent}%;"></div></div></div>${isUnlocked ? `<button class="btn btn-primary btn-sm" onclick="openRoadmapStepModal(${index}, 'basic')">${isCompleted ? 'Review Step' : 'Start Step'}</button>` : `<button class="btn btn-secondary btn-sm" disabled><i class="fa-solid fa-lock"></i> Locked</button>`}</div></div></div>`;
-      }
-    });
-  } else {
-    basicRoadmapVirtualList.updateItems(filteredSteps);
+  if (filteredSteps.length === 0) {
+    timeline.innerHTML = `<div class="empty-state" style="text-align:center; padding:3rem; color:var(--text-secondary);"><p>No roadmap steps found matching "${currentRoadmapSearch}".</p></div>`;
+    return;
   }
-}
 
-let advancedRoadmapVirtualList = null;
+  let html = "";
+  filteredSteps.forEach((step) => {
+    const index = roadmapSteps.indexOf(step);
+    const isCompleted = isRoadmapStepCompleted(step);
+    let isUnlocked = index === 0 || isRoadmapStepCompleted(roadmapSteps[index - 1]);
+    let statusClass = "locked", statusText = "Locked", statusTagClass = "locked-tag";
+    if (isCompleted) { statusClass = "completed"; statusText = "Completed"; statusTagClass = "completed-tag"; }
+    else if (isUnlocked) { statusClass = "active"; statusText = "Active"; statusTagClass = "active-tag"; }
+    let progressPercent = 0, progressText = "";
+    if (step.type === "quiz") { progressPercent = isCompleted ? 100 : 0; progressText = isCompleted ? "Passed" : "Not Started"; }
+    else { const solved = step.problems.filter(pid => userProgress.completedProblems.includes(pid)).length; progressPercent = Math.round((solved / step.problems.length) * 100); progressText = `${solved}/${step.problems.length} Solved`; }
+    let stepIcon = `<i class="fa-solid ${step.icon}"></i>`;
+    if (isCompleted) stepIcon = `<i class="fa-solid fa-check"></i>`;
+    else if (statusClass === "locked") stepIcon = `<i class="fa-solid fa-lock"></i>`;
+    html += `<div class="roadmap-step ${statusClass}" data-step="${step.id}"><div class="step-marker-dot">${stepIcon}</div><div class="roadmap-step-card"><div class="step-card-header"><span class="step-number">Step ${step.id}</span><span class="step-status-tag ${statusTagClass}">${statusText}</span></div><h3 class="step-title">${step.title}</h3><p class="step-desc">${step.desc}</p><div class="step-card-footer"><div class="step-progress"><div class="step-progress-label">Progress: ${progressText} (${progressPercent}%)</div><div class="step-progress-bar-container"><div class="step-progress-bar-fill" style="width: ${progressPercent}%;"></div></div></div>${isUnlocked ? `<button class="btn btn-primary btn-sm" onclick="openRoadmapStepModal(${index}, 'basic')">${isCompleted ? 'Review Step' : 'Start Step'}</button>` : `<button class="btn btn-secondary btn-sm" disabled><i class="fa-solid fa-lock"></i> Locked</button>`}</div></div></div>`;
+  });
+  timeline.innerHTML = html;
+}
 
 function renderAdvancedRoadmap() {
   const timeline = document.getElementById("advancedRoadmapTimeline");
@@ -1418,33 +1375,28 @@ function renderAdvancedRoadmap() {
            step.theory.toLowerCase().includes(searchLower);
   });
 
-  if (!advancedRoadmapVirtualList) {
-    advancedRoadmapVirtualList = new VirtualList({
-      container: timeline,
-      items: filteredSteps,
-      isGrid: false,
-      itemHeight: 200,
-      gap: 32,
-      overscan: 4,
-      renderItem: (step) => {
-        const index = advancedRoadmapSteps.indexOf(step);
-        const isCompleted = isRoadmapStepCompleted(step);
-        let isUnlocked = index === 0 || isRoadmapStepCompleted(advancedRoadmapSteps[index - 1]);
-        let statusClass = "locked", statusText = "Locked", statusTagClass = "locked-tag";
-        if (isCompleted) { statusClass = "completed"; statusText = "Completed"; statusTagClass = "completed-tag"; }
-        else if (isUnlocked) { statusClass = "active"; statusText = "Active"; statusTagClass = "active-tag"; }
-        let progressPercent = 0, progressText = "";
-        if (step.type === "quiz") { progressPercent = isCompleted ? 100 : 0; progressText = isCompleted ? "Passed" : "Not Started"; }
-        else { const solved = step.problems.filter(pid => userProgress.completedProblems.includes(pid)).length; progressPercent = Math.round((solved / step.problems.length) * 100); progressText = `${solved}/${step.problems.length} Solved`; }
-        let stepIcon = `<i class="fa-solid ${step.icon}"></i>`;
-        if (isCompleted) stepIcon = `<i class="fa-solid fa-check"></i>`;
-        else if (statusClass === "locked") stepIcon = `<i class="fa-solid fa-lock"></i>`;
-        return `<div class="roadmap-step ${statusClass}" data-step="${step.id}"><div class="step-marker-dot">${stepIcon}</div><div class="roadmap-step-card"><div class="step-card-header"><span class="step-number">Step ${step.id}</span><span class="step-status-tag ${statusTagClass}">${statusText}</span></div><h3 class="step-title">${step.title}</h3><p class="step-desc">${step.desc}</p><div class="step-card-footer"><div class="step-progress"><div class="step-progress-label">Progress: ${progressText} (${progressPercent}%)</div><div class="step-progress-bar-container"><div class="step-progress-bar-fill" style="width: ${progressPercent}%;"></div></div></div>${isUnlocked ? `<button class="btn btn-primary btn-sm" onclick="openRoadmapStepModal(${index}, 'advanced')">${isCompleted ? 'Review Step' : 'Start Step'}</button>` : `<button class="btn btn-secondary btn-sm" disabled><i class="fa-solid fa-lock"></i> Locked</button>`}</div></div></div>`;
-      }
-    });
-  } else {
-    advancedRoadmapVirtualList.updateItems(filteredSteps);
+  if (filteredSteps.length === 0) {
+    timeline.innerHTML = `<div class="empty-state" style="text-align:center; padding:3rem; color:var(--text-secondary);"><p>No roadmap steps found matching "${currentRoadmapSearch}".</p></div>`;
+    return;
   }
+
+  let html = "";
+  filteredSteps.forEach((step) => {
+    const index = advancedRoadmapSteps.indexOf(step);
+    const isCompleted = isRoadmapStepCompleted(step);
+    let isUnlocked = index === 0 || isRoadmapStepCompleted(advancedRoadmapSteps[index - 1]);
+    let statusClass = "locked", statusText = "Locked", statusTagClass = "locked-tag";
+    if (isCompleted) { statusClass = "completed"; statusText = "Completed"; statusTagClass = "completed-tag"; }
+    else if (isUnlocked) { statusClass = "active"; statusText = "Active"; statusTagClass = "active-tag"; }
+    let progressPercent = 0, progressText = "";
+    if (step.type === "quiz") { progressPercent = isCompleted ? 100 : 0; progressText = isCompleted ? "Passed" : "Not Started"; }
+    else { const solved = step.problems.filter(pid => userProgress.completedProblems.includes(pid)).length; progressPercent = Math.round((solved / step.problems.length) * 100); progressText = `${solved}/${step.problems.length} Solved`; }
+    let stepIcon = `<i class="fa-solid ${step.icon}"></i>`;
+    if (isCompleted) stepIcon = `<i class="fa-solid fa-check"></i>`;
+    else if (statusClass === "locked") stepIcon = `<i class="fa-solid fa-lock"></i>`;
+    html += `<div class="roadmap-step ${statusClass}" data-step="${step.id}"><div class="step-marker-dot">${stepIcon}</div><div class="roadmap-step-card"><div class="step-card-header"><span class="step-number">Step ${step.id}</span><span class="step-status-tag ${statusTagClass}">${statusText}</span></div><h3 class="step-title">${step.title}</h3><p class="step-desc">${step.desc}</p><div class="step-card-footer"><div class="step-progress"><div class="step-progress-label">Progress: ${progressText} (${progressPercent}%)</div><div class="step-progress-bar-container"><div class="step-progress-bar-fill" style="width: ${progressPercent}%;"></div></div></div>${isUnlocked ? `<button class="btn btn-primary btn-sm" onclick="openRoadmapStepModal(${index}, 'advanced')">${isCompleted ? 'Review Step' : 'Start Step'}</button>` : `<button class="btn btn-secondary btn-sm" disabled><i class="fa-solid fa-lock"></i> Locked</button>`}</div></div></div>`;
+  });
+  timeline.innerHTML = html;
 }
 
 function openRoadmapStepModal(stepIndex, type = 'basic') {
@@ -1650,8 +1602,8 @@ function buildLeaderboardRows(leaders = [], currentUserId = getCurrentUserId()) 
   const currentEntry = getCurrentLeaderboardEntry(currentUserId);
   if (currentUserId !== "local-user" || userProgress.xp > 350 || leaders.length === 0) rowsById.set(currentEntry.id, currentEntry);
   const rankedRows = Array.from(rowsById.values()).sort((a, b) => b.xp - a.xp || a.name.localeCompare(b.name)).map((leader, index) => ({ ...leader, rank: index + 1 }));
-  const visibleRows = rankedRows; // Remove LEADERBOARD_LIMIT slice to support virtualization
-  if (!visibleRows.some(leader => leader.id === currentEntry.id)) { const currentRow = rankedRows.find(leader => leader.id === currentEntry.id); if (currentRow) visibleRows.push(currentRow); }
+  const visibleRows = rankedRows.slice(0, LEADERBOARD_LIMIT);
+  if (!visibleRows.some(leader => leader.id === currentEntry.id)) { const currentRow = rankedRows.find(leader => leader.id === currentEntry.id); if (currentRow) visibleRows[visibleRows.length - 1] = currentRow; }
   return visibleRows;
 }
 
@@ -1663,30 +1615,11 @@ function getCurrentUserId() { return window.algoAuth?.user?.sub || window.algoAu
 
 function getCurrentDisplayName() { return window.algoAuth?.user?.name || cachedSession?.user?.name || userProgress.name || "Learner"; }
 
-let leaderboardVirtualList = null;
-
 function renderLeaderboardRows(rows, currentUserId = getCurrentUserId(), options = {}) {
   const leaderboardList = document.getElementById("leaderboardList");
   if (!leaderboardList) return;
-  
-  if (!leaderboardVirtualList) {
-    leaderboardVirtualList = new VirtualList({
-      container: leaderboardList,
-      items: rows,
-      isGrid: false,
-      itemHeight: 56, // Estimated height of a leaderboard row
-      gap: 12,
-      overscan: 10,
-      emptyMessage: `<p class="empty-state">${options.emptyMessage || "No leaderboard data yet."}</p>`,
-      renderItem: (user) => {
-        const isCurrentUser = user.id === currentUserId || (currentUserId === "local-user" && user.id === "local-user");
-        const displayName = isCurrentUser ? `${user.name} (You)` : user.name;
-        return `<div class="leaderboard-item ${isCurrentUser ? 'current-user' : ''}"><span class="leader-rank">#${user.rank}</span><span class="leader-avatar" aria-hidden="true">${escapeHtml(user.avatar)}</span><span class="leader-name">${escapeHtml(displayName)}</span><span class="leader-xp">${user.xp.toLocaleString()} XP</span></div>`;
-      }
-    });
-  } else {
-    leaderboardVirtualList.updateItems(rows);
-  }
+  if (!rows.length) { leaderboardList.innerHTML = `<p class="empty-state">${options.emptyMessage || "No leaderboard data yet."}</p>`; return; }
+  leaderboardList.innerHTML = rows.map(user => { const isCurrentUser = user.id === currentUserId || (currentUserId === "local-user" && user.id === "local-user"); const displayName = isCurrentUser ? `${user.name} (You)` : user.name; return `<div class="leaderboard-item ${isCurrentUser ? 'current-user' : ''}"><span class="leader-rank">#${user.rank}</span><span class="leader-avatar" aria-hidden="true">${escapeHtml(user.avatar)}</span><span class="leader-name">${escapeHtml(displayName)}</span><span class="leader-xp">${user.xp.toLocaleString()} XP</span></div>`; }).join("");
 }
 
 // ============================================
