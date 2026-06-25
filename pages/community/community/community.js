@@ -349,8 +349,30 @@ function renderPosts() {
         
         // Post Content
         const postContent = document.createElement('div');
-        postContent.className = 'post-content';
-        postContent.textContent = post.content;
+        postContent.className = 'post-content markdown-body';
+        
+        let safePostHtml = '';
+        if (typeof MarkdownParser !== 'undefined') {
+            const parsedHtml = MarkdownParser.parse(post.content);
+            if (typeof window !== 'undefined' && window.DOMSanitizer) {
+                safePostHtml = window.DOMSanitizer.sanitizeHTML(parsedHtml);
+            } else if (typeof DOMPurify !== 'undefined') {
+                safePostHtml = DOMPurify.sanitize(parsedHtml, {
+                    ALLOWED_TAGS: ['b', 'i', 'em', 'strong', 'a', 'p', 'ul', 'ol', 'li', 'code', 'pre', 'blockquote', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'br', 'hr'],
+                    ALLOWED_ATTR: ['href', 'target', 'rel']
+                });
+            } else {
+                safePostHtml = escapeHtml(post.content);
+            }
+        } else if (typeof marked !== 'undefined' && typeof DOMPurify !== 'undefined') {
+            safePostHtml = DOMPurify.sanitize(marked.parse(post.content, { breaks: true }), {
+                ALLOWED_TAGS: ['b', 'i', 'em', 'strong', 'a', 'p', 'ul', 'ol', 'li', 'code', 'pre', 'blockquote', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'br', 'hr'],
+                ALLOWED_ATTR: ['href', 'target', 'rel']
+            });
+        } else {
+            safePostHtml = escapeHtml(post.content);
+        }
+        postContent.innerHTML = safePostHtml;
         card.appendChild(postContent);
         
         // Post Tags
@@ -449,8 +471,30 @@ function renderPosts() {
                 commentMeta.textContent = formatDate(c.timestamp);
                 
                 const commentText = document.createElement('div');
-                commentText.className = 'comment-text';
-                commentText.textContent = c.text;
+                commentText.className = 'comment-text markdown-body';
+                
+                let safeCommentHtml = '';
+                if (typeof MarkdownParser !== 'undefined') {
+                    const parsedHtml = MarkdownParser.parse(c.text);
+                    if (typeof window !== 'undefined' && window.DOMSanitizer) {
+                        safeCommentHtml = window.DOMSanitizer.sanitizeHTML(parsedHtml);
+                    } else if (typeof DOMPurify !== 'undefined') {
+                        safeCommentHtml = DOMPurify.sanitize(parsedHtml, {
+                            ALLOWED_TAGS: ['b', 'i', 'em', 'strong', 'a', 'p', 'ul', 'ol', 'li', 'code', 'pre', 'blockquote', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'br', 'hr'],
+                            ALLOWED_ATTR: ['href', 'target', 'rel']
+                        });
+                    } else {
+                        safeCommentHtml = escapeHtml(c.text);
+                    }
+                } else if (typeof marked !== 'undefined' && typeof DOMPurify !== 'undefined') {
+                    safeCommentHtml = DOMPurify.sanitize(marked.parse(c.text, { breaks: true }), {
+                        ALLOWED_TAGS: ['b', 'i', 'em', 'strong', 'a', 'p', 'ul', 'ol', 'li', 'code', 'pre', 'blockquote', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'br', 'hr'],
+                        ALLOWED_ATTR: ['href', 'target', 'rel']
+                    });
+                } else {
+                    safeCommentHtml = escapeHtml(c.text);
+                }
+                commentText.innerHTML = safeCommentHtml;
                 
                 commentDiv.appendChild(commentMeta);
                 commentDiv.appendChild(commentText);
@@ -464,11 +508,13 @@ function renderPosts() {
         addCommentForm.className = 'add-comment-form';
         addCommentForm.addEventListener('submit', (e) => addComment(e, post.id));
         
-        const commentInput = document.createElement('input');
-        commentInput.type = 'text';
-        commentInput.placeholder = 'Write a comment...';
+        const commentInput = document.createElement('textarea');
+        commentInput.placeholder = 'Write a comment... (Markdown supported)';
         commentInput.required = true;
         commentInput.style.fontFamily = 'inherit';
+        commentInput.rows = 2;
+        commentInput.style.resize = 'vertical';
+        commentInput.style.flex = '1';
         
         const commentSubmitBtn = document.createElement('button');
         commentSubmitBtn.type = 'submit';
@@ -554,7 +600,7 @@ function toggleComments(postId) {
 function addComment(event, postId) {
     event.preventDefault();
     const form = event.target;
-    const input = form.querySelector('input');
+    const input = form.querySelector('textarea') || form.querySelector('input');
     const text = input.value.trim();
 
     if (!text) return;

@@ -20,8 +20,24 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
     
     <!-- External Stylesheets -->
-    <link rel="stylesheet" href="styles.css" />
-    <link rel="stylesheet" href="sql-visualizer.css" />
+    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="wasm-sql-visualizer.css" />
+
+    <!-- Theme Initialization Script -->
+    <script>
+      (function() {
+        try {
+          var storedTheme = localStorage.getItem('theme');
+          var prefersLight = window.matchMedia('(prefers-color-scheme: light)').matches;
+          var theme = storedTheme || (prefersLight ? 'light' : 'dark');
+          if (theme === 'light') {
+            document.documentElement.classList.add('light-mode');
+          } else {
+            document.documentElement.classList.remove('light-mode');
+          }
+        } catch (e) {}
+      })();
+    </script>
 </head>
 <body class="sql-body">
 
@@ -99,6 +115,6 @@
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/sql/sql.min.js"></script>
-    <script src="sql-visualizer.js"></script>
+    <script src="wasm-sql-visualizer.js"></script>
 </body>
 </html>

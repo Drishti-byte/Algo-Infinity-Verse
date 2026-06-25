@@ -1,46 +1,28 @@
-import { initializeApp, cert, getApps } from "firebase-admin/app";
-import { getAuth } from "firebase-admin/auth";
-import { getFirestore } from "firebase-admin/firestore";
 import crypto from "crypto";
+import { getDb, COLLECTIONS } from "../../firebase.js";
 
-let db = null;
-let useFirestore = false;
-
-function initFirebase() {
-  if (getApps().length > 0) {
-    db = getFirestore();
-    useFirestore = true;
-    return;
-  }
-  const projectId = process.env.FIREBASE_PROJECT_ID;
-  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-  const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n");
-  if (!projectId || !clientEmail || !privateKey) {
-    console.warn("Firebase Admin credentials not set.");
-    return;
-  }
-  try {
-    initializeApp({ credential: cert({ projectId, clientEmail, privateKey }) });
-    db = getFirestore();
-    useFirestore = true;
-  } catch (e) {
-    console.error("Firebase init error:", e);
-  }
-}
-initFirebase();
+const db = getDb();
+const useFirestore = !!db;
 
 const SESSION_COOKIE = "aiv_session";
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
 
 function sessionSecret() {
-  return process.env.SESSION_SECRET || "dev-only-change-me-with-SESSION_SECRET-before-deploying";
+  if (process.env.SESSION_SECRET) return process.env.SESSION_SECRET;
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("SESSION_SECRET is required in production.");
+  }
+  return "dev-only-change-me-with-SESSION_SECRET-before-deploying";
 }
+
 function sign(v) {
   return crypto.createHmac("sha256", sessionSecret()).update(v).digest("base64url");
 }
+
 function b64u(i) {
   return Buffer.from(i).toString("base64").replace(/=/g,"").replace(/\+/g,"-").replace(/\//g,"_");
 }
+
 function createSessionToken(u) {
   const h = b64u(JSON.stringify({ alg: "HS256", typ: "JWT" }));
   const p = b64u(JSON.stringify({
@@ -49,6 +31,7 @@ function createSessionToken(u) {
   }));
   return `${h}.${p}.${sign(`${h}.${p}`)}`;
 }
+
 function sessionCookie(token) {
   const secure = process.env.VERCEL === "1";
   return [
@@ -59,16 +42,58 @@ function sessionCookie(token) {
   ].filter(Boolean).join("; ");
 }
 
+async function verifyGoogleIdToken(idToken) {
+  const apiKey = process.env.FIREBASE_API_KEY;
+  if (!apiKey) {
+    console.error("[google-auth] FIREBASE_API_KEY not configured");
+    return null;
+  }
+
+  try {
+    const response = await fetch(
+      `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${encodeURIComponent(apiKey)}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idToken }),
+      }
+    );
+
+    if (!response.ok) {
+      const text = await response.text();
+      console.error("[google-auth] lookup HTTP error:", response.status, text);
+      return null;
+    }
+
+    const data = await response.json();
+
+    if (!data.users || data.users.length === 0) {
+      console.error("[google-auth] no users in lookup response");
+      return null;
+    }
+
+    const user = data.users[0];
+    console.log("[google-auth] lookup success for:", user.email);
+    return {
+      uid: user.localId,
+      email: user.email,
+      name: user.displayName || user.email,
+      picture: user.photoUrl || null,
+      emailVerified: user.emailVerified === true,
+    };
+  } catch (err) {
+    console.error("[google-auth] lookup exception:", err);
+    return null;
+  }
+}
+
 async function readUsers() {
   if (!useFirestore) return [];
   try {
     const snap = await db.collection("users").get();
-    return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    return snap.docs.map(d => ({ ...d.data(), id: d.id }));
   } catch (e) { console.error(e); return []; }
 }
-
-async function writeUsers(users) { /* no-op in serverless — handled by Firestore */ }
-function ensureUserStore() { /* no-op */ }
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -81,10 +106,13 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Missing idToken" });
     }
 
+    if (!process.env.FIREBASE_PROJECT_ID) {
+      return res.status(500).json({ error: "Firebase is not configured. Set FIREBASE_PROJECT_ID environment variable." });
+    }
+
     let decoded;
-    try {
-      decoded = await getAuth().verifyIdToken(idToken);
-    } catch (verifyError) {
+    decoded = await verifyGoogleIdToken(idToken);
+    if (!decoded) {
       return res.status(401).json({ error: "Invalid token" });
     }
 
